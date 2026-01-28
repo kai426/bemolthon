@@ -4,31 +4,34 @@
 @custom-variant dark (&:is(.dark *));
 
 @theme {
-  /* --- CORES PRIMÁRIAS BEMOL --- */
+  /* Cores Primárias */
   --color-bemol-blue: #0097D7;
-  --color-bemol-red: #EF3E33;
-
-  /* Estados de Hover (calculados conforme guia) */
   --color-bemol-blue-hover: #0081BA;
+  --color-bemol-red: #EF3E33;
   --color-bemol-red-hover: #D63529;
 
-  /* --- CORES DE SUPORTE --- */
-  --color-bemol-gray-light: #F3F4F6;
-  --color-bemol-gray-medium: #6B7280;
-  --color-bemol-gray-dark: #1F2937;
+  /* Cores de Prioridade/Status */
+  --color-status-high: #EF3E33;
+  --color-status-medium: #FF9500;
+  --color-status-low: #FFC107;
+  --color-status-success: #22C55E;
 
-  /* --- PADRÃO CORDINHA BEMOL (Gradient) --- */
-  /* Isso cria a classe 'bg-bemol-stripe' automaticamente */
+  /* Cores Neutras */
+  --color-bemol-gray-light: #F3F4F6;  /* Backgrounds secundários */
+  --color-bemol-gray-medium: #6B7280; /* Textos secundários */
+  --color-bemol-gray-dark: #1F2937;   /* Textos principais */
+
+  /* Cordinha Bemol (Fundo Decorativo) */
   --background-image-bemol-stripe: repeating-linear-gradient(
     45deg,
     #0097D7,
     #0097D7 10px,
     transparent 10px,
-    transparent 20px,
-    #EF3E33 20px,
-    #EF3E33 30px,
-    transparent 30px,
-    transparent 40px
+    transparent 25px, /* Espaçamento de 2.5x (10px * 2.5 = 25px) */
+    #EF3E33 25px,
+    #EF3E33 35px,
+    transparent 35px,
+    transparent 50px
   );
 }
 

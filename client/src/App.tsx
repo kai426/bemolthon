@@ -1,28 +1,23 @@
-import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
-import { BrowserRouter, Routes, Route } from "react-router-dom";
-import Dashboard from "./pages/Dashboard";
-import DeviceTest from "./pages/DeviceTest";
-import Survey from "./pages/Survey";
-import NotFound from "./pages/NotFound";
-import { TooltipProvider } from "./components/ui/tooltip";
-import { Toaster } from "./components/ui/sonner";
+import { BrowserRouter, Routes, Route, Navigate } from "react-router-dom";
+import { Login } from "./pages/Login";
+import { SurveyQueue } from "./pages/SurveyQueue";
+import { HardwareCheck } from "./pages/HardwareCheck";
+import { InterviewRecorder } from "./pages/InterviewRecorder";
+import { Success } from "./pages/Success";
 
-const queryClient = new QueryClient();
-
-const App = () => (
-  <QueryClientProvider client={queryClient}>
-    <TooltipProvider>
-      <Toaster />
-      <BrowserRouter>
-        <Routes>
-          <Route path="/" element={<Dashboard />} />
-          <Route path="/device-test/:surveyId" element={<DeviceTest />} />
-          <Route path="/survey/:surveyId" element={<Survey />} />
-          {/* <Route path="*" element={<NotFound />} /> */}
-        </Routes>
-      </BrowserRouter>
-    </TooltipProvider>
-  </QueryClientProvider>
-);
+function App() {
+  return (
+    <BrowserRouter>
+      <Routes>
+        <Route path="/" element={<Navigate to="/login" replace />} />
+        <Route path="/login" element={<Login />} />
+        <Route path="/queue" element={<SurveyQueue />} />
+        <Route path="/check" element={<HardwareCheck />} />
+        <Route path="/record" element={<InterviewRecorder />} />
+        <Route path="/success" element={<Success />} />
+      </Routes>
+    </BrowserRouter>
+  );
+}
 
 export default App;

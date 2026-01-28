@@ -1,46 +1,30 @@
-import { Video, Bell, User } from "lucide-react";
-import { cn } from "../lib/utils";
-import { Button } from "./ui/button";
+import { User } from "lucide-react";
 
-interface HeaderProps {
-  className?: string;
-}
+export function Header() {
+    return (
+        <header className="bg-white shadow-sm sticky top-0 z-50">
+            {/* Cordinha Decorativa no Topo */}
+            <div className="h-1.5 w-full bg-bemol-stripe" />
 
-export function Header({ className }: HeaderProps) {
-  return (
-    <header
-      className={cn(
-        "sticky top-0 z-50 w-full border-b border-border bg-card/80 backdrop-blur-md",
-        className
-      )}
-    >
-      <div className="container flex h-16 items-center justify-between">
-        {/* Logo */}
-        <div className="flex items-center gap-3">
-          <div className="flex h-10 w-10 items-center justify-center rounded-xl gradient-primary shadow-md">
-            <Video className="h-5 w-5 text-primary-foreground" />
-          </div>
-          <div>
-            <h1 className="text-lg font-bold text-foreground">
-              Bemol <span className="text-primary">Voice</span>
-            </h1>
-            <p className="text-xs text-muted-foreground">Pesquisa por Vídeo</p>
-          </div>
-        </div>
+            <div className="max-w-6xl mx-auto px-4 h-16 flex items-center justify-between">
+                {/* Logo Bemol (Simulada com texto, substitua por SVG se tiver) */}
+                <div className="flex items-center gap-2">
+                    <span className="text-2xl font-bold tracking-tighter text-bemol-blue">Bemol</span>
+                    <span className="text-sm font-medium text-bemol-gray-medium bg-bemol-gray-light px-2 py-0.5 rounded-full">
+                        Insight
+                    </span>
+                </div>
 
-        {/* Actions */}
-        <div className="flex items-center gap-2">
-          <Button variant="ghost" size="icon" className="relative">
-            <Bell className="h-5 w-5" />
-            <span className="absolute -right-0.5 -top-0.5 flex h-4 w-4 items-center justify-center rounded-full bg-accent text-[10px] font-bold text-accent-foreground">
-              2
-            </span>
-          </Button>
-          <Button variant="ghost" size="icon">
-            <User className="h-5 w-5" />
-          </Button>
-        </div>
-      </div>
-    </header>
-  );
+                <div className="flex items-center gap-3">
+                    <div className="text-right hidden md:block">
+                        <p className="text-sm font-bold text-bemol-gray-dark">Kaíky (Colaborador)</p>
+                        <p className="text-xs text-bemol-gray-medium">Matrícula: 12345</p>
+                    </div>
+                    <div className="h-10 w-10 bg-bemol-gray-light rounded-full flex items-center justify-center border border-gray-200">
+                        <User className="text-bemol-blue" size={20} />
+                    </div>
+                </div>
+            </div>
+        </header>
+    );
 }

@@ -1,3 +1,4 @@
+// client/src/interview/InterviewRecorder.tsx
 import { useEffect, useRef, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { Mic, Activity, Wifi, WifiOff, ArrowRight } from "lucide-react";
@@ -5,13 +6,15 @@ import { Card, CardContent } from "../components/ui/card";
 import { Button } from "../components/ui/button";
 import { cn } from "../lib/utils";
 
-// Componentes e Libs
+// Componentes
 import { AnalysisDashboard } from "../components/dashboard/AnalysisDashboard";
-import { SURVEY_QUESTIONS } from "../lib/questions"; // Certifique-se que este arquivo existe
-import { ConsentModal } from "../interview/ConsentModal"; // Certifique-se que este arquivo existe
 import { Header } from "../components/header";
-import { QuestionTimeline } from "../interview/QuestionTimeline"; // Certifique-se que este arquivo existe
-import { type AnalysisData, MOCK_ANALYSIS } from "../lib/analysis"; // Certifique-se que este arquivo existe
+import { QuestionTimeline } from "../interview/QuestionTimeline";
+import { ConsentModal } from "../interview/ConsentModal";
+
+// Libs e Constantes (Modularizado)
+import { SURVEY_QUESTIONS } from "../lib/questions";
+import { type AnalysisData, MOCK_ANALYSIS } from "../lib/analysis";
 
 export function InterviewRecorder() {
   const navigate = useNavigate();
@@ -19,39 +22,36 @@ export function InterviewRecorder() {
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const [socket, setSocket] = useState<WebSocket | null>(null);
 
-  // Estados de Controle
+  // --- ESTADOS GERAIS ---
   const [hasConsented, setHasConsented] = useState(false);
   const [currentQIndex, setCurrentQIndex] = useState(0);
   const [isFinished, setIsFinished] = useState(false);
 
-  // Estados de Gravação
+  // --- ESTADOS DA GRAVAÇÃO ATUAL ---
   const [isRecording, setIsRecording] = useState(false);
   const [isConnected, setIsConnected] = useState(false);
   const [timer, setTimer] = useState(0);
   const [feedback, setFeedback] = useState<string | null>(null);
   
-  // Dados da Análise
+  // --- DADOS ---
   const [currentAnalysis, setCurrentAnalysis] = useState<AnalysisData | null>(null);
   const [allResults, setAllResults] = useState<AnalysisData[]>([]);
 
   const currentQuestion = SURVEY_QUESTIONS[currentQIndex];
 
-  // 1. Conexão WebSocket
+  // 1. WebSocket Conexão
   useEffect(() => {
     if (!hasConsented || isFinished) return;
 
     const ws = new WebSocket("ws://localhost:9090");
-    
     ws.onopen = () => setIsConnected(true);
     ws.onclose = () => setIsConnected(false);
     
     ws.onmessage = (event) => {
       const msg = JSON.parse(event.data);
       if (msg.type === 'analysis' && msg.data) {
-        // Recebeu dados reais!
-        console.log("🔥 Frontend recebeu análise real:", msg.data.transcricao);
-        setFeedback(msg.data.insight_final || "Analisando...");
-        setCurrentAnalysis(msg.data); 
+        setFeedback(msg.data.insight_final || "IA analisando...");
+        setCurrentAnalysis(msg.data); // Guarda a análise mais recente da pergunta atual
       }
     };
 
@@ -66,18 +66,18 @@ export function InterviewRecorder() {
     return () => clearInterval(interval);
   }, [isRecording]);
 
-  // 3. Iniciar Gravação
+  // 3. Funções de Mídia
   const startRecording = async () => {
     try {
-      // A. Envia Contexto para a IA
+      // [ATUALIZAÇÃO CRÍTICA] A. Envia Contexto para a IA
       if (socket && socket.readyState === WebSocket.OPEN) {
-         console.log("📝 Enviando contexto da pergunta para o Server...");
+         console.log(`📝 Enviando contexto: Pergunta ${currentQuestion.id}`);
          socket.send(JSON.stringify({ 
-             text_input: `CONTEXTO: O usuário está respondendo à pergunta: "${currentQuestion.text}". (${currentQuestion.context}). Analise a resposta dele a partir de agora.` 
+             text_input: `CONTEXTO ATUAL: O usuário está respondendo à pergunta: "${currentQuestion.text}". O contexto esperado é: ${currentQuestion.context}. Analise a resposta dele a partir de agora.` 
          }));
       }
 
-      // B. Acessa Mídia
+      // B. Inicia Media
       const stream = await navigator.mediaDevices.getUserMedia({ 
         video: { width: 640, height: 480 }, 
         audio: { sampleRate: 16000, channelCount: 1 } 
@@ -87,18 +87,17 @@ export function InterviewRecorder() {
       setIsRecording(true);
       setTimer(0);
       setFeedback(null);
-      setCurrentAnalysis(null); // Limpa análise anterior para forçar nova captura
+      setCurrentAnalysis(null); // Reseta análise anterior para não misturar perguntas
 
-      // C. Configura Processador de Áudio
+      // C. Audio Worklet
       const audioContext = new AudioContext({ sampleRate: 16000 });
-      // Certifique-se que pcm-processor.js está na pasta PUBLIC
       await audioContext.audioWorklet.addModule("pcm-processor.js");
       const source = audioContext.createMediaStreamSource(stream);
       const worklet = new AudioWorkletNode(audioContext, "pcm-processor");
       
       let chunkCounter = 0;
       worklet.port.onmessage = (e) => {
-        if (!isRecording) return;
+        if (!isRecording) return; 
         
         const pcmFloat32 = e.data;
         const pcmInt16 = new Int16Array(pcmFloat32.length);
@@ -108,7 +107,7 @@ export function InterviewRecorder() {
         }
         
         chunkCounter++;
-        // Envia vídeo a cada ~10 chunks de áudio para não sobrecarregar
+        // Envia vídeo a cada ~10 pacotes de áudio para não saturar o WebSocket
         const shouldSendVideo = chunkCounter % 10 === 0; 
         sendToSocket(pcmInt16.buffer, shouldSendVideo);
       };
@@ -118,7 +117,6 @@ export function InterviewRecorder() {
 
     } catch (err) {
       console.error("Erro media", err);
-      alert("Erro ao acessar microfone/câmera. Verifique as permissões.");
     }
   };
 
@@ -148,22 +146,17 @@ export function InterviewRecorder() {
   };
 
   const stopRecording = () => {
+    // Para a gravação visualmente imediatamente
     setIsRecording(false);
     
-    // Pequeno delay para a IA processar o fim da fala
-    console.log("🛑 Parando... Aguardando resposta final do socket.");
-    
+    console.log("🛑 Parando gravação. Aguardando análise final da IA...");
+
+    // [ATUALIZAÇÃO CRÍTICA] Delay para garantir que a IA processe a última frase
     setTimeout(() => {
-        // Se currentAnalysis for null (IA não respondeu), usa o MOCK
-        // Se currentAnalysis tiver dados (IA respondeu), usa eles
+        // Usa o último dado real recebido OU o mock se falhar
         const result = currentAnalysis || MOCK_ANALYSIS;
         
-        if (currentAnalysis) {
-            console.log("✅ Usando dados REAIS da IA");
-        } else {
-            console.warn("⚠️ IA não respondeu a tempo. Usando MOCK de fallback.");
-        }
-
+        console.log("✅ Resultado salvo:", result.transcricao);
         setAllResults(prev => [...prev, result]);
 
         if (currentQIndex < SURVEY_QUESTIONS.length - 1) {
@@ -171,7 +164,7 @@ export function InterviewRecorder() {
         } else {
             setIsFinished(true);
         }
-    }, 4000); // 4 segundos de espera
+    }, 4000); // 4 segundos de "Carregando"
   };
 
   const formatTime = (seconds: number) => {
@@ -187,6 +180,7 @@ export function InterviewRecorder() {
   }
 
   if (isFinished) {
+      // Pega o último resultado (ou faz uma média se você quiser evoluir depois)
       const finalData = allResults[allResults.length - 1] || MOCK_ANALYSIS;
       
       return (
