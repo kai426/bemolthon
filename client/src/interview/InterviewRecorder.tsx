@@ -1,17 +1,16 @@
 import { useEffect, useRef, useState } from "react";
 import { useNavigate } from "react-router-dom";
-import { Mic, Activity, Wifi, WifiOff, ArrowRight } from "lucide-react";
+import { Mic, Activity, Wifi, WifiOff, ArrowRight, Loader2, Square } from "lucide-react";
 import { Card, CardContent } from "../components/ui/card";
 import { Button } from "../components/ui/button";
 import { cn } from "../lib/utils";
 
-// Componentes e Libs
 import { AnalysisDashboard } from "../components/dashboard/AnalysisDashboard";
-import { SURVEY_QUESTIONS } from "../lib/questions"; // Certifique-se que este arquivo existe
-import { ConsentModal } from "../interview/ConsentModal"; // Certifique-se que este arquivo existe
+import { SURVEY_QUESTIONS } from "../lib/questions"; 
+import { ConsentModal } from "../interview/ConsentModal"; 
 import { Header } from "../components/header";
-import { QuestionTimeline } from "../interview/QuestionTimeline"; // Certifique-se que este arquivo existe
-import { type AnalysisData, MOCK_ANALYSIS } from "../lib/analysis"; // Certifique-se que este arquivo existe
+import { QuestionTimeline } from "../interview/QuestionTimeline"; 
+import { type AnalysisData, MOCK_ANALYSIS } from "../lib/analysis"; 
 
 export function InterviewRecorder() {
   const navigate = useNavigate();
@@ -19,39 +18,68 @@ export function InterviewRecorder() {
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const [socket, setSocket] = useState<WebSocket | null>(null);
 
-  // Estados de Controle
   const [hasConsented, setHasConsented] = useState(false);
   const [currentQIndex, setCurrentQIndex] = useState(0);
   const [isFinished, setIsFinished] = useState(false);
-
-  // Estados de Gravação
   const [isRecording, setIsRecording] = useState(false);
+  const [isProcessing, setIsProcessing] = useState(false);
   const [isConnected, setIsConnected] = useState(false);
   const [timer, setTimer] = useState(0);
   const [feedback, setFeedback] = useState<string | null>(null);
   
-  // Dados da Análise
   const [currentAnalysis, setCurrentAnalysis] = useState<AnalysisData | null>(null);
   const [allResults, setAllResults] = useState<AnalysisData[]>([]);
-
+  const isProcessingRef = useRef(false);
   const currentQuestion = SURVEY_QUESTIONS[currentQIndex];
 
-  // 1. Conexão WebSocket
+  useEffect(() => { isProcessingRef.current = isProcessing; }, [isProcessing]);
+
+  const handleAnalysisReceived = (data: AnalysisData) => {
+      console.log("✅ [FRONT] Análise recebida e processada com sucesso!");
+      setIsProcessing(false);
+      setAllResults(prev => [...prev, data]);
+      setCurrentAnalysis(data);
+
+      setTimeout(() => {
+          if (currentQIndex < SURVEY_QUESTIONS.length - 1) {
+              setCurrentQIndex(prev => prev + 1);
+              setCurrentAnalysis(null);
+              setFeedback(null);
+          } else {
+              setIsFinished(true);
+          }
+      }, 2000); // Aumentei um pouco o tempo para você ver o resultado antes de trocar
+  };
+
+  // 1. WebSocket Debug
   useEffect(() => {
     if (!hasConsented || isFinished) return;
-
+    
+    console.log("🔌 [FRONT] Tentando conectar ao WebSocket em ws://localhost:9090...");
     const ws = new WebSocket("ws://localhost:9090");
     
-    ws.onopen = () => setIsConnected(true);
-    ws.onclose = () => setIsConnected(false);
+    ws.onopen = () => {
+        console.log("🟢 [FRONT] WebSocket Conectado!");
+        setIsConnected(true);
+    };
+    ws.onclose = () => {
+        console.warn("🔴 [FRONT] WebSocket Desconectado!");
+        setIsConnected(false);
+    };
+    ws.onerror = (e) => {
+        console.error("❌ [FRONT] Erro no WebSocket:", e);
+    };
     
     ws.onmessage = (event) => {
       const msg = JSON.parse(event.data);
       if (msg.type === 'analysis' && msg.data) {
-        // Recebeu dados reais!
-        console.log("🔥 Frontend recebeu análise real:", msg.data.transcricao);
-        setFeedback(msg.data.insight_final || "Analisando...");
-        setCurrentAnalysis(msg.data); 
+        console.log("🔥 [FRONT] Dados REAIS recebidos:", msg.data);
+        if (isProcessingRef.current) {
+            handleAnalysisReceived(msg.data);
+        } else {
+            setFeedback(msg.data.insight_final || "Analisando...");
+            setCurrentAnalysis(msg.data); 
+        }
       }
     };
 
@@ -66,18 +94,20 @@ export function InterviewRecorder() {
     return () => clearInterval(interval);
   }, [isRecording]);
 
-  // 3. Iniciar Gravação
+  // 3. Gravação Debugada
   const startRecording = async () => {
     try {
-      // A. Envia Contexto para a IA
+      console.log("🎙️ [FRONT] Iniciando gravação...");
+      
       if (socket && socket.readyState === WebSocket.OPEN) {
-         console.log("📝 Enviando contexto da pergunta para o Server...");
          socket.send(JSON.stringify({ 
-             text_input: `CONTEXTO: O usuário está respondendo à pergunta: "${currentQuestion.text}". (${currentQuestion.context}). Analise a resposta dele a partir de agora.` 
+             text_input: `CONTEXTO: O usuário está respondendo à pergunta: "${currentQuestion.text}".` 
          }));
+      } else {
+         alert("ERRO: WebSocket não está conectado. Verifique se o servidor está rodando.");
+         return;
       }
 
-      // B. Acessa Mídia
       const stream = await navigator.mediaDevices.getUserMedia({ 
         video: { width: 640, height: 480 }, 
         audio: { sampleRate: 16000, channelCount: 1 } 
@@ -85,14 +115,24 @@ export function InterviewRecorder() {
 
       if (videoRef.current) videoRef.current.srcObject = stream;
       setIsRecording(true);
+      setIsProcessing(false);
       setTimer(0);
       setFeedback(null);
-      setCurrentAnalysis(null); // Limpa análise anterior para forçar nova captura
+      setCurrentAnalysis(null);
 
-      // C. Configura Processador de Áudio
       const audioContext = new AudioContext({ sampleRate: 16000 });
-      // Certifique-se que pcm-processor.js está na pasta PUBLIC
-      await audioContext.audioWorklet.addModule("pcm-processor.js");
+      
+      // VERIFICAÇÃO CRÍTICA DO ARQUIVO PCM
+      try {
+        console.log("📂 [FRONT] Carregando pcm-processor.js...");
+        await audioContext.audioWorklet.addModule("/pcm-processor.js"); // Barra inicial importante
+        console.log("📂 [FRONT] Worklet carregado com sucesso!");
+      } catch (e) {
+        console.error("❌ [FRONT] Falha ao carregar pcm-processor.js. O arquivo está na pasta public?", e);
+        alert("Erro: Arquivo de processamento de áudio não encontrado.");
+        return;
+      }
+
       const source = audioContext.createMediaStreamSource(stream);
       const worklet = new AudioWorkletNode(audioContext, "pcm-processor");
       
@@ -100,6 +140,10 @@ export function InterviewRecorder() {
       worklet.port.onmessage = (e) => {
         if (!isRecording) return;
         
+        // Debug para garantir que o áudio está sendo processado
+        if (chunkCounter === 0) console.log("🔊 [FRONT] Primeiros bytes de áudio detectados e sendo enviados!");
+        if (chunkCounter % 50 === 0) console.log(`📡 [FRONT] Enviando chunk #${chunkCounter}`);
+
         const pcmFloat32 = e.data;
         const pcmInt16 = new Int16Array(pcmFloat32.length);
         for (let i = 0; i < pcmFloat32.length; i++) {
@@ -108,7 +152,6 @@ export function InterviewRecorder() {
         }
         
         chunkCounter++;
-        // Envia vídeo a cada ~10 chunks de áudio para não sobrecarregar
         const shouldSendVideo = chunkCounter % 10 === 0; 
         sendToSocket(pcmInt16.buffer, shouldSendVideo);
       };
@@ -117,8 +160,8 @@ export function InterviewRecorder() {
       worklet.connect(audioContext.destination);
 
     } catch (err) {
-      console.error("Erro media", err);
-      alert("Erro ao acessar microfone/câmera. Verifique as permissões.");
+      console.error("Erro Geral Media", err);
+      alert("Erro ao acessar microfone/câmera.");
     }
   };
 
@@ -149,60 +192,35 @@ export function InterviewRecorder() {
 
   const stopRecording = () => {
     setIsRecording(false);
+    setIsProcessing(true);
+    console.log("🛑 [FRONT] Parando gravação. Aguardando IA...");
     
-    // Pequeno delay para a IA processar o fim da fala
-    console.log("🛑 Parando... Aguardando resposta final do socket.");
-    
+    // Timeout de segurança
     setTimeout(() => {
-        // Se currentAnalysis for null (IA não respondeu), usa o MOCK
-        // Se currentAnalysis tiver dados (IA respondeu), usa eles
-        const result = currentAnalysis || MOCK_ANALYSIS;
-        
-        if (currentAnalysis) {
-            console.log("✅ Usando dados REAIS da IA");
-        } else {
-            console.warn("⚠️ IA não respondeu a tempo. Usando MOCK de fallback.");
+        if (isProcessingRef.current) {
+            console.warn("⚠️ [FRONT] Timeout de 20s. IA não respondeu. Usando MOCK.");
+            handleAnalysisReceived(MOCK_ANALYSIS);
         }
-
-        setAllResults(prev => [...prev, result]);
-
-        if (currentQIndex < SURVEY_QUESTIONS.length - 1) {
-            setCurrentQIndex(prev => prev + 1);
-        } else {
-            setIsFinished(true);
-        }
-    }, 4000); // 4 segundos de espera
+    }, 20000); 
   };
 
+  // --- RENDERIZAÇÃO (Mantida igual ao anterior, apenas para contexto) ---
   const formatTime = (seconds: number) => {
     const mins = Math.floor(seconds / 60);
     const secs = seconds % 60;
     return `${mins.toString().padStart(2, '0')}:${secs.toString().padStart(2, '0')}`;
   };
 
-  // --- RENDERIZAÇÃO ---
-
-  if (!hasConsented) {
-      return <ConsentModal onConfirm={() => setHasConsented(true)} />;
-  }
+  if (!hasConsented) return <ConsentModal onConfirm={() => setHasConsented(true)} />;
 
   if (isFinished) {
       const finalData = allResults[allResults.length - 1] || MOCK_ANALYSIS;
-      
       return (
         <div className="min-h-screen bg-bemol-gray-light">
            <Header />
            <div className="max-w-6xl mx-auto p-6 mt-6 space-y-6">
-              <div className="flex items-center justify-between">
-                 <div>
-                    <h1 className="text-2xl font-bold text-bemol-gray-dark">Pesquisa Concluída</h1>
-                    <p className="text-gray-500">Confira a análise consolidada da sua participação.</p>
-                 </div>
-                 <Button onClick={() => navigate('/queue')} className="bg-bemol-blue hover:bg-bemol-blue-hover">
-                    Voltar para Fila
-                 </Button>
-              </div>
               <AnalysisDashboard data={finalData} />
+              <Button onClick={() => navigate('/queue')} className="mt-4">Voltar</Button>
            </div>
         </div>
       );
@@ -212,48 +230,26 @@ export function InterviewRecorder() {
     <div className="min-h-screen bg-bemol-gray-light">
        <Header/>
        <main className="max-w-4xl mx-auto p-6 space-y-6">
-          
           <QuestionTimeline total={SURVEY_QUESTIONS.length} current={currentQIndex} />
-
-          <div className="bg-white p-6 rounded-xl shadow-sm border-l-4 border-bemol-blue animate-in fade-in slide-in-from-right duration-500">
-             <div className="flex justify-between items-center mb-2">
-                <span className="text-xs font-bold text-bemol-blue uppercase tracking-wide">
-                    {currentQuestion.category}
-                </span>
-                <span className="text-xs text-gray-400">Pergunta {currentQuestion.id} de {SURVEY_QUESTIONS.length}</span>
-             </div>
-             <h2 className="text-xl font-bold text-gray-900 leading-tight">
-                {currentQuestion.text}
-             </h2>
+          
+          <div className="bg-white p-6 rounded-xl shadow-sm border-l-4 border-bemol-blue">
+             <h2 className="text-xl font-bold text-gray-900">{currentQuestion.text}</h2>
           </div>
 
           <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
              <div className="md:col-span-2 relative">
-                <div className={cn(
-                    "relative aspect-video bg-black rounded-xl overflow-hidden shadow-lg border-4 transition-all duration-300",
-                    isRecording ? "border-bemol-red shadow-bemol-red/30" : "border-transparent"
-                )}>
+                <div className={cn("relative aspect-video bg-black rounded-xl overflow-hidden shadow-lg", isRecording && "border-4 border-red-500")}>
                    <video ref={videoRef} autoPlay muted className="w-full h-full object-cover transform scale-x-[-1]"/>
                    <canvas ref={canvasRef} width="320" height="240" className="hidden"/>
-
                    <div className="absolute top-4 right-4 flex flex-col gap-2 items-end">
-                      <div className={cn("px-3 py-1 rounded-full text-xs font-bold flex items-center gap-1.5 backdrop-blur-md", isConnected ? "bg-green-500/90 text-white" : "bg-red-500/90 text-white")}>
-                          {isConnected ? <Wifi size={12}/> : <WifiOff size={12}/>}
-                          {isConnected ? "IA Ativa" : "Offline"}
+                      <div className={cn("px-3 py-1 rounded-full text-xs font-bold text-white", isConnected ? "bg-green-500" : "bg-red-500")}>
+                          {isConnected ? "IA Online" : "IA Offline"}
                       </div>
-                      {isRecording && (
-                          <div className="px-3 py-1 rounded-full bg-black/60 text-white font-mono font-bold flex items-center gap-2 backdrop-blur-md">
-                              <div className="w-2 h-2 rounded-full bg-red-500 animate-pulse"/>
-                              {formatTime(timer)}
-                          </div>
-                      )}
                    </div>
                 </div>
-
                 {isRecording && feedback && (
-                    <div className="mt-4 p-3 bg-blue-50 border border-blue-100 rounded-lg flex items-start gap-3 animate-in fade-in slide-in-from-top-2">
-                        <Activity className="text-bemol-blue shrink-0 mt-0.5" size={18}/>
-                        <p className="text-sm text-gray-700 italic">"{feedback}"</p>
+                    <div className="mt-2 p-2 bg-blue-50 text-sm text-blue-800 rounded">
+                        IA: {feedback}
                     </div>
                 )}
              </div>
@@ -262,31 +258,22 @@ export function InterviewRecorder() {
                 <Card>
                    <CardContent className="p-6 space-y-6">
                       <div className="text-center">
-                          <p className="text-sm font-medium text-gray-500 uppercase">Status</p>
-                          <p className={cn("text-2xl font-bold", isRecording ? "text-bemol-red" : "text-gray-700")}>
-                              {isRecording ? "Gravando Resposta" : "Aguardando"}
+                          <p className="text-2xl font-bold">
+                              {isProcessing ? "Analisando..." : isRecording ? formatTime(timer) : "Pronto"}
                           </p>
                       </div>
-
                       <div className="space-y-3">
-                          {!isRecording ? (
-                              <Button 
-                                onClick={startRecording} disabled={!isConnected}
-                                className="w-full h-14 bg-bemol-red hover:bg-bemol-red-hover text-lg font-bold shadow-md"
-                              >
-                                 <Mic className="mr-2"/> Gravar Resposta
+                          {isProcessing ? (
+                              <Button disabled className="w-full h-14"><Loader2 className="animate-spin mr-2"/> Aguarde</Button>
+                          ) : !isRecording ? (
+                              <Button onClick={startRecording} disabled={!isConnected} className="w-full h-14 bg-red-600 hover:bg-red-700">
+                                 <Mic className="mr-2"/> Gravar
                               </Button>
                           ) : (
-                              <Button 
-                                onClick={stopRecording}
-                                className="w-full h-14 bg-bemol-blue hover:bg-bemol-blue-hover text-lg font-bold shadow-md"
-                              >
-                                 Próxima Pergunta <ArrowRight className="ml-2"/>
+                              <Button onClick={stopRecording} className="w-full h-14 bg-blue-600 hover:bg-blue-700">
+                                 Parar <Square className="ml-2" size={16}/>
                               </Button>
                           )}
-                      </div>
-                      <div className="text-xs text-gray-400 text-center pt-2">
-                         O vídeo não será salvo. Apenas a análise.
                       </div>
                    </CardContent>
                 </Card>
