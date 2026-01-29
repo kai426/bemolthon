@@ -44,7 +44,7 @@ export function AnalysisDashboard({ data }: Props) {
       "text-red-600";
 
   return (
-    <div className="space-y-6 animate-in fade-in duration-500 w-full">
+    <div className="space-y-6 animate-in fade-in slide-in-from-bottom-4 duration-700">
       
       {/* KPIs */}
       <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
@@ -80,14 +80,14 @@ export function AnalysisDashboard({ data }: Props) {
 
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
         
-        {/* GRÁFICO RADAR - ALTURA FIXA PARA EVITAR ERRO */}
+        {/* 2. Gráfico Radar - CORREÇÃO DE ALTURA AQUI */}
         <Card className="col-span-1 shadow-md">
           <CardHeader>
             <CardTitle className="text-sm font-medium text-gray-500">Espectro Emocional</CardTitle>
           </CardHeader>
-          <CardContent className="p-4">
-            {/* CONTAINER COM DIMENSÕES EXPLÍCITAS */}
-            <div style={{ width: '100%', height: '320px' }}>
+          <CardContent>
+            {/* Forçamos uma altura fixa com style para garantir que o ResponsiveContainer funcione */}
+            <div style={{ width: '100%', height: 300 }}>
                 <ResponsiveContainer width="100%" height="100%">
                     <RadarChart 
                         cx="50%" 
